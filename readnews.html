@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TOI RSS Feed Viewer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    async function loadRSS(url) {
+      const proxyUrl = 'https://api.allorigins.win/get?url=' + encodeURIComponent(url);
+      const response = await fetch(proxyUrl);
+      const data = await response.json();
+      const parser = new DOMParser();
+      const xml = parser.parseFromString(data.contents, "text/xml");
+      const items = xml.querySelectorAll("item");
+      const rightPane = document.getElementById("right-pane");
+      rightPane.innerHTML = "";
+      items.forEach(item => {
+        const title = item.querySelector("title")?.textContent;
+        const link = item.querySelector("link")?.textContent;
+        const description = item.querySelector("description")?.textContent;
+        const enclosure = item.querySelector("enclosure")?.getAttribute("url");
+        const div = document.createElement("div");
+        div.className = "mb-6 p-4 border rounded shadow bg-white";
+        div.innerHTML = `
+          <h3 class='text-xl font-semibold mb-2'><a href='${link}' target='_blank' class='text-blue-600 hover:underline'>${title}</a></h3>
+          ${enclosure ? `<div class='w-full flex justify-center'><img src='${enclosure}' alt='Image' class='w-auto max-w-full h-auto max-h-[200px] object-contain mb-4 rounded shadow' /></div>` : ''}
+          <p class='text-sm text-gray-700'>${description}</p>
+        `;
+        rightPane.appendChild(div);
+      });
+    }
+
+    function loadCategoriesFromExcel(event) {
+      const file = event.target.files[0];
+      const reader = new FileReader();
+      reader.onload = async function (e) {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(sheet);
+
+        const container = document.getElementById("rss-category-list");
+        container.innerHTML = "";
+
+        const grouped = {};
+        rows.forEach(row => {
+          const cat = row["Category"]?.trim() || "Other";
+          if (!grouped[cat]) grouped[cat] = [];
+          grouped[cat].push(row);
+        });
+
+        for (const category in grouped) {
+          const groupDiv = document.createElement("div");
+          groupDiv.innerHTML = `<h3 class='font-semibold text-gray-700 mb-1'>${category}</h3><ul class='space-y-1'></ul>`;
+          const ul = groupDiv.querySelector("ul");
+          grouped[category].forEach(item => {
+            const li = document.createElement("li");
+            li.innerHTML = `<button onclick="loadRSS('${item["RSS Feed URL"]}')" class='text-blue-500 hover:underline'>${item["RSS Feed URL"].split("/").pop().replace(".cms", "")}</button>`;
+            ul.appendChild(li);
+          });
+          container.appendChild(groupDiv);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+  </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body class="bg-gray-50 text-gray-800">
+  <div class="flex min-h-screen">
+    <!-- Left Pane -->
+    <div class="w-1/3 max-w-xs bg-white p-6 border-r overflow-y-auto">
+      <h2 class="text-2xl font-bold mb-4">TOI RSS Categories</h2>
+      <input type="file" accept=".xlsx" onchange="loadCategoriesFromExcel(event)" class="mb-4" />
+      <div id="rss-category-list" class="space-y-4 text-sm"></div>
+    </div>
+
+    <!-- Right Pane -->
+    <div id="right-pane" class="flex-1 p-6 overflow-y-auto">
+      <h2 class="text-2xl font-bold mb-4">Select a feed to view its content</h2>
+    </div>
+  </div>
+</body>
+</html>
